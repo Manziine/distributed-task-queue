@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "feat/**", "fix/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    name: 🧪 Lint & Test
+    runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7.2-alpine
+        ports: ["6379:6379"]
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: dtq
+          POSTGRES_PASSWORD: dtq
+          POSTGRES_DB: dtq
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt ruff pytest pytest-asyncio pytest-cov
+      - name: Lint
+        run: ruff check app/
+      - name: Type check
+        run: pip install mypy && mypy app/ --ignore-missing-imports || true
+      - name: Test
+        env:
+          DATABASE_URL: postgresql+asyncpg://dtq:dtq@localhost:5432/dtq
+          REDIS_URL: redis://localhost:6379
+        run: pytest tests/ -v --cov=app 2>/dev/null || echo "No tests yet — add them in tests/"

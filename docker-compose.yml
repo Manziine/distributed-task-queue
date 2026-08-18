@@ -1,0 +1,63 @@
+version: "3.9"
+
+services:
+  # ─── API Server ───────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql+asyncpg://dtq:dtq@db:5432/dtq
+      - DEBUG=true
+    depends_on:
+      - redis
+      - db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ─── Worker Pool ──────────────────────────────────────────────────────
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - DATABASE_URL=postgresql+asyncpg://dtq:dtq@db:5432/dtq
+      - NUM_WORKERS=4
+    depends_on:
+      - redis
+      - db
+    deploy:
+      # Scale workers independently from the API
+      replicas: 1
+
+  # ─── Redis (Priority Queue + Cache) ──────────────────────────────────
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes  # Persistence enabled
+
+  # ─── PostgreSQL (Job history + audit log) ─────────────────────────────
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: dtq
+      POSTGRES_PASSWORD: dtq
+      POSTGRES_DB: dtq
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  redis_data:
+  postgres_data:
